@@ -1,5 +1,6 @@
 package com.thanics.andrew.glassesandroid;
 
+import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
@@ -15,15 +16,21 @@ import android.bluetooth.le.AdvertiseSettings;
 import android.bluetooth.le.BluetoothLeAdvertiser;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.ParcelUuid;
+import android.provider.Telephony;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 
+import java.io.IOException;
 import java.util.Arrays;
 
 public class MainActivity extends AppCompatActivity {
@@ -33,10 +40,15 @@ public class MainActivity extends AppCompatActivity {
     private BluetoothGattServer server;
     private BluetoothDevice mDevice;
 
+    private MessageManager messageManager;
+    private BluetoothGattCharacteristic messageChar;
+
     private Button pairButton;
     private TextView statusText;
 
-    static final int REQUEST_ENABLE_BT = 1;
+    private static final int REQUEST_ENABLE_BT = 1;
+    private static final int SMS_PERMISSION_CODE = 0;
+    private static final int CONTACTS_PERMISSION_CODE = 2;
     private final String TAG = "Glasses";
 
     @Override
@@ -46,6 +58,24 @@ public class MainActivity extends AppCompatActivity {
         pairButton = findViewById(R.id.pairButton);
         statusText = findViewById(R.id.statusText);
 
+        checkForPermissions();
+
+        messageManager = new MessageManager();
+        registerReceiver(messageManager, new IntentFilter(Telephony.Sms.Intents.SMS_RECEIVED_ACTION));
+        messageManager.setListener(new MessageManager.Listener() {
+            @Override
+            public void onTextReceived(String smsSender, String text) {
+                Log.i("Glasses", "Received Message! " + MessageManager.getContactName(getApplicationContext(), smsSender) + " sent: " + text);
+                if(mDevice != null && messageChar != null)
+                {
+                    server.notifyCharacteristicChanged(mDevice, messageChar, false);
+                }
+                else
+                {
+                    Log.w(TAG, "Device not ready to receive messages");
+                }
+            }
+        });
 
         bluetoothManager = (BluetoothManager)getSystemService(Context.BLUETOOTH_SERVICE);
         bluetoothAdapter = bluetoothManager.getAdapter();
@@ -65,8 +95,34 @@ public class MainActivity extends AppCompatActivity {
                 startServer();
             }
         });
+    }
 
+    private void checkForPermissions()
+    {
+        if(!hasReadSmsPermission())
+        {
+            ActivityCompat.requestPermissions(MainActivity.this, new
+                    String[]{Manifest.permission.READ_SMS,
+                    Manifest.permission.RECEIVE_SMS}, SMS_PERMISSION_CODE);
+        }
 
+        if(!hasReadContactsPermission())
+        {
+            ActivityCompat.requestPermissions(MainActivity.this, new
+                    String[]{Manifest.permission.READ_CONTACTS}, CONTACTS_PERMISSION_CODE);
+        }
+    }
+
+    private boolean hasReadSmsPermission() {
+        return ContextCompat.checkSelfPermission(MainActivity.this,
+                Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(MainActivity.this,
+                        Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean hasReadContactsPermission() {
+        return ContextCompat.checkSelfPermission(MainActivity.this,
+                Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED;
     }
 
     private void startAdvertising()
@@ -84,6 +140,7 @@ public class MainActivity extends AppCompatActivity {
                 .setIncludeDeviceName(true)
                 .setIncludeTxPowerLevel(true)
                 .addServiceUuid(new ParcelUuid(TimeManager.serviceUUID))
+                .addServiceUuid(new ParcelUuid(MessageManager.serviceUUID))
                 .build();
 
         advertiser.startAdvertising(settings, data, new AdvertiseCallback() {
@@ -144,6 +201,13 @@ public class MainActivity extends AppCompatActivity {
                     server.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS,
                             0, TimeManager.getExactTime());
                 }
+                else if (MessageManager.messageUUID.equals(characteristic.getUuid()))
+                {
+                    messageChar = characteristic;
+                    Log.i(TAG, "reading message");
+                    server.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS,
+                            0, messageManager.getCurrentMessage());
+                }
                 else
                 {
                     Log.w(TAG, "invalid characteristic read: " + characteristic.getUuid());
@@ -156,7 +220,9 @@ public class MainActivity extends AppCompatActivity {
             public void onDescriptorReadRequest(BluetoothDevice device, int requestId, int offset,
                                                 BluetoothGattDescriptor descriptor) {
                 super.onDescriptorReadRequest(device, requestId, offset, descriptor);
-                if (TimeManager.clientConfigUUID.equals(descriptor.getUuid())) {
+                if (TimeManager.clientConfigUUID.equals(descriptor.getUuid()) ||
+                        MessageManager.clientConfigUUID.equals(descriptor.getUuid())) {
+
                     Log.i(TAG, "config descriptor read");
                     byte[] returnValue;
                     if (mDevice == device) {
@@ -185,7 +251,8 @@ public class MainActivity extends AppCompatActivity {
                                                  boolean preparedWrite, boolean responseNeeded,
                                                  int offset, byte[] value) {
                 super.onDescriptorWriteRequest(device, requestId, descriptor, preparedWrite, responseNeeded, offset, value);
-                if(TimeManager.clientConfigUUID.equals(descriptor.getUuid())) {
+                if(TimeManager.clientConfigUUID.equals(descriptor.getUuid()) ||
+                        MessageManager.clientConfigUUID.equals(descriptor.getUuid())) {
                     if (Arrays.equals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE, value)) {
                         Log.d(TAG, "Subscribing device to notifications: " + device);
                         mDevice = device;
@@ -205,7 +272,6 @@ public class MainActivity extends AppCompatActivity {
                         server.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE,
                                 0, null);
                     }
-
                 }
             }
         });
@@ -216,6 +282,7 @@ public class MainActivity extends AppCompatActivity {
 
         server.clearServices();
         server.addService(TimeManager.createTimeService());
+        server.addService(MessageManager.createMessageService());
     }
 
     private void stopServer() {
@@ -228,5 +295,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         stopServer();
+        unregisterReceiver(messageManager);
     }
 }
