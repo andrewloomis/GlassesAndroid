@@ -22,8 +22,8 @@ import kotlin.text.Charsets;
 public class MessageManager extends BroadcastReceiver {
     private static final String TAG = "MessageManager";
 
-    public static UUID serviceUUID = UUID.fromString("00001899-0000-1000-8000-00805f9b34fb");
-    public static UUID messageUUID = UUID.fromString("00002a2b-0000-1000-8000-00805f9b34fb");
+    public static UUID serviceUUID = UUID.fromString("0349f3e8-ce6e-11e8-a8d5-f2801f1b9fd1");
+    public static UUID messageUUID = UUID.fromString("0349f744-ce6e-11e8-a8d5-f2801f1b9fd1");
     public static UUID clientConfigUUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
     private class Message {
