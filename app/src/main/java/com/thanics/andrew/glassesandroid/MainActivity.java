@@ -26,11 +26,18 @@ import android.provider.Telephony;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.telephony.SmsManager;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.Arrays;
+
+import kotlin.text.Charsets;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -89,6 +96,19 @@ public class MainActivity extends AppCompatActivity {
 //                messageChar.setValue(bytes);
                 if(mDevice != null && messageChar != null)
                 {
+                    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+                    try {
+//                        outputStream.write(128);
+                        outputStream.write(MessageManager.getContactName(getApplicationContext(), smsSender).getBytes(Charsets.UTF_8));
+                        outputStream.write(0x1D);
+                        outputStream.write(text.getBytes(Charsets.UTF_8));
+                    }
+                    catch (IOException e)
+                    {
+                        Log.e("Glasses", "IOException: " + e.toString());
+                    }
+                    messageChar.setValue(outputStream.toByteArray());
+
                     server.notifyCharacteristicChanged(mDevice, messageChar, false);
                 }
                 else
@@ -173,37 +193,41 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onConnectionStateChange(final BluetoothDevice device, int status, int newState) {
                 super.onConnectionStateChange(device, status, newState);
+                if(status == BluetoothGatt.GATT_SUCCESS)
+                {
+                    if (newState == BluetoothProfile.STATE_CONNECTED) {
+                        Log.i(TAG, "device connected: " + device);
+                        mDevice = device;
+                        BluetoothDevice dev = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(device.getAddress());
+                        server.connect(dev, false);
+                        advertiser.stopAdvertising(advertiseCallback);
 
-                if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    Log.i(TAG, "device connected: " + device);
-                    mDevice = device;
-
-                    statusText.setText("Connected");
-                    statusText.setTextColor(Color.GREEN);
-                    pairButton.setText("Disconnect");
-                    pairButton.setClickable(true);
-                    pairButton.setOnClickListener(new View.OnClickListener() {
-                        @Override
-                        public void onClick(View v) {
-                            server.cancelConnection(device);
-                        }
-                    });
-                }
-                else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    Log.i(TAG, "device disconnected: " + device);
-                    advertiser.stopAdvertising(advertiseCallback);
-                    mDevice = null;
-                    statusText.setText("Not Connected");
-                    statusText.setTextColor(Color.RED);
-                    pairButton.setText("Pair");
-                    pairButton.setOnClickListener(new View.OnClickListener() {
-                        @Override
-                        public void onClick(View v) {
-                            pairButton.setClickable(false);
-                            startAdvertising();
-                            startServer();
-                        }
-                    });
+                        statusText.setText("Connected");
+                        statusText.setTextColor(Color.GREEN);
+                        pairButton.setText("Disconnect");
+                        pairButton.setClickable(true);
+                        pairButton.setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+                                server.cancelConnection(mDevice);
+                            }
+                        });
+                    }
+                    else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                        Log.i(TAG, "device disconnected: " + device);
+                        mDevice = null;
+                        statusText.setText("Not Connected");
+                        statusText.setTextColor(Color.RED);
+                        pairButton.setText("Pair");
+                        pairButton.setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+                                pairButton.setClickable(false);
+                                startAdvertising();
+                                startServer();
+                            }
+                        });
+                    }
                 }
             }
 
@@ -241,11 +265,12 @@ public class MainActivity extends AppCompatActivity {
                 {
                     messageChar = characteristic;
                     Log.i(TAG, "reading message");
-//                    server.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS,
-//                            0, messageManager.getCurrentMessage());
-                    byte[] bytes = {0x01, 0x02};
                     server.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS,
-                            0, bytes);
+                            0, messageManager.getCurrentMessage());
+//                    String str = "hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello12";
+//                    byte[] bytes = str.getBytes(Charsets.UTF_8);
+//                    server.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS,
+//                            0, bytes);
                 }
                 else
                 {
@@ -338,13 +363,14 @@ public class MainActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
 
-        stopServer();
-        unregisterReceiver(messageManager);
+
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
 
+        stopServer();
+        unregisterReceiver(messageManager);
     }
 }

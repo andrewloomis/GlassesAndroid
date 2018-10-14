@@ -27,8 +27,8 @@ public class MessageManager extends BroadcastReceiver {
     public static UUID clientConfigUUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
     private class Message {
-        String name;
-        String body;
+        String name = "";
+        String body = "";
     }
     private Message currentMessage = new Message();
 
@@ -38,7 +38,9 @@ public class MessageManager extends BroadcastReceiver {
     {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try {
+//            outputStream.write(128);
             outputStream.write(currentMessage.name.getBytes(Charsets.UTF_8));
+            outputStream.write(0x1D);
             outputStream.write(currentMessage.body.getBytes(Charsets.UTF_8));
         }
         catch (IOException e)
@@ -71,7 +73,9 @@ public class MessageManager extends BroadcastReceiver {
             String smsBody = "";
             for (SmsMessage smsMessage : Telephony.Sms.Intents.getMessagesFromIntent(intent)) {
                 smsSender = smsMessage.getDisplayOriginatingAddress();
+                currentMessage.name = smsSender;
                 smsBody += smsMessage.getMessageBody();
+                currentMessage.body = smsBody;
             }
             listener.onTextReceived(smsSender, smsBody);
         }
