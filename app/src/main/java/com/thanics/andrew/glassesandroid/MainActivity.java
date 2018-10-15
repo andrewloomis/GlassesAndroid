@@ -15,21 +15,25 @@ import android.bluetooth.le.AdvertiseCallback;
 import android.bluetooth.le.AdvertiseData;
 import android.bluetooth.le.AdvertiseSettings;
 import android.bluetooth.le.BluetoothLeAdvertiser;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.ColorSpace;
 import android.os.Bundle;
 import android.os.ParcelUuid;
 import android.provider.Telephony;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.telephony.SmsManager;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ListView;
 import android.widget.TextView;
 
 import java.io.ByteArrayOutputStream;
@@ -74,6 +78,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_ENABLE_BT = 1;
     private static final int SMS_PERMISSION_CODE = 0;
     private static final int CONTACTS_PERMISSION_CODE = 2;
+    private static final int NOTIFICATION_PERMISSION_CODE = 3;
     private final String TAG = "Glasses";
 
     @Override
@@ -84,6 +89,8 @@ public class MainActivity extends AppCompatActivity {
         statusText = findViewById(R.id.statusText);
 
         checkForPermissions();
+
+        LocalBroadcastManager.getInstance(this).registerReceiver(onNotice, new IntentFilter("Msg"));
 
         messageManager = new MessageManager();
         registerReceiver(messageManager, new IntentFilter(Telephony.Sms.Intents.SMS_RECEIVED_ACTION));
@@ -152,6 +159,15 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(MainActivity.this, new
                     String[]{Manifest.permission.READ_CONTACTS}, CONTACTS_PERMISSION_CODE);
         }
+        if(!hasNotificationPermission())
+        {
+            ActivityCompat.requestPermissions(MainActivity.this, new
+                    String[]{Manifest.permission.BIND_NOTIFICATION_LISTENER_SERVICE},
+                    NOTIFICATION_PERMISSION_CODE);
+            Intent intent = new Intent(
+                    "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS");
+            startActivity(intent);
+        }
     }
 
     private boolean hasReadSmsPermission() {
@@ -164,6 +180,11 @@ public class MainActivity extends AppCompatActivity {
     private boolean hasReadContactsPermission() {
         return ContextCompat.checkSelfPermission(MainActivity.this,
                 Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean hasNotificationPermission() {
+        return ContextCompat.checkSelfPermission(MainActivity.this,
+                Manifest.permission.BIND_NOTIFICATION_LISTENER_SERVICE) == PackageManager.PERMISSION_GRANTED;
     }
 
     private void startAdvertising()
@@ -359,12 +380,17 @@ public class MainActivity extends AppCompatActivity {
         server.close();
     }
 
-    @Override
-    protected void onPause() {
-        super.onPause();
+    private BroadcastReceiver onNotice = new BroadcastReceiver() {
 
-
-    }
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            // String pack = intent.getStringExtra("package");
+            String title = intent.getStringExtra("title");
+            String text = intent.getStringExtra("text");
+            Log.i("Glasses","Title2: " + title);
+            Log.i("Glasses","Text2: " + text);
+        }
+    };
 
     @Override
     protected void onDestroy() {
