@@ -1,6 +1,7 @@
 package com.thanics.andrew.glassesandroid;
 
 import android.Manifest;
+import android.app.ActivityManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
@@ -16,6 +17,7 @@ import android.bluetooth.le.AdvertiseData;
 import android.bluetooth.le.AdvertiseSettings;
 import android.bluetooth.le.BluetoothLeAdvertiser;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -24,7 +26,9 @@ import android.graphics.Color;
 import android.graphics.ColorSpace;
 import android.os.Bundle;
 import android.os.ParcelUuid;
+import android.provider.Settings;
 import android.provider.Telephony;
+import android.service.notification.NotificationListenerService;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.content.LocalBroadcastManager;
@@ -80,15 +84,18 @@ public class MainActivity extends AppCompatActivity {
     private static final int CONTACTS_PERMISSION_CODE = 2;
     private static final int NOTIFICATION_PERMISSION_CODE = 3;
     private final String TAG = "Glasses";
+    private Context context;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        context = this;
         pairButton = findViewById(R.id.pairButton);
         statusText = findViewById(R.id.statusText);
 
         checkForPermissions();
+        checkNotificationListenerSetting();
 
         LocalBroadcastManager.getInstance(this).registerReceiver(onNotice, new IntentFilter("Msg"));
 
@@ -164,6 +171,17 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(MainActivity.this, new
                     String[]{Manifest.permission.BIND_NOTIFICATION_LISTENER_SERVICE},
                     NOTIFICATION_PERMISSION_CODE);
+        }
+    }
+
+    private void checkNotificationListenerSetting() {
+
+        ComponentName cn = new ComponentName(context, NotificationService.class);
+        String enabledAppList = Settings.Secure.getString(
+                this.getContentResolver(), "enabled_notification_listeners");
+        boolean enabled = enabledAppList.contains(cn.flattenToString());
+        if(!enabled)
+        {
             Intent intent = new Intent(
                     "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS");
             startActivity(intent);
